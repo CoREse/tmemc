@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+#Top Memory Calculator, by CRE, 20220316
+#Use top to get the maxmum memory usage of certain program name during a time interval.
+import subprocess
+import sys
+import time
+
+SizeUnits={"K":1, "M":1<<10, "G":1<<20, "T":1<<30, "P":1<<40}
+def interpretUnit(Size):
+    try:
+        S=int(Size)
+    except ValueError:
+        if (Size[-1].upper() in SizeUnits):
+            S=float(Size[:-1])*SizeUnits[Size[-1].upper()]
+            S=int(S)
+        else:
+            raise ValueError
+    return S
+
+HeaderItems=set(["PID", "USER", "PR", "NI", "VIRT", "RES", "SHR", "S", "%CPU", "%MEM", "TIME+", "COMMAND"])
+def calcMem(ProgramName):
+    TopCommand=['top -bn1 -p `pgrep -d "," "^%s$"`'%(ProgramName)]
+    run=subprocess.Popen(TopCommand, bufsize=1, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, universal_newlines=True)
+
+    RESN=5
+    ResMem=0
+    Summary=True
+
+    while True:
+        line=run.stdout.readline()
+        if line=="":
+            break
+        sl=line.split()
+        if len(sl)==0:
+            continue
+        if Summary and sl[0] not in HeaderItems:
+            continue
+        Summary=False
+        Header=False
+        try:
+            Mem=interpretUnit(sl[RESN])
+            ResMem+=Mem
+        except ValueError:
+            Header=True
+        if Header or sl[RESN] in HeaderItems:
+            for i in range(len(sl)):
+                if sl[i]=="RES":
+                    RESN=i
+    run.wait()
+    run.terminate()
+    return ResMem
+
+def usage(E=1):
+    print(\
+"""tmemc ProgramName [OPTIONS]
+Options:
+    -t TIME(s)  Running time, if zero then run once.(default 0)
+    -i TIME(s)  CheckInterval.(default 0.1)
+    -h --help   Show this help.
+    -d          During program running time. Would first wait ProgramName to run, then terminate after they are done.(default false, if given, will ignore -t)""",file=sys.stderr)
+    exit(E)
+
+RunningTime=0
+CheckInterval=0.1
+ProgramName=""
+During=False
+
+def passParams(argv):
+    global RunningTime
+    global CheckInterval
+    global ProgramName
+    global During
+    try:
+        i=1
+        while i <len(argv):
+            if argv[i][0]=="-":
+                if argv[i]=="-t":
+                    RunningTime=int(argv[i+1])
+                    i+=1
+                elif argv[i]=="-i":
+                    CheckInterval=float(argv[i+1])
+                    i+=1
+                elif argv[i]=="-d":
+                    During=True
+                elif argv[i]=="--help" or argv[i]=="-h":
+                    usage(0)
+                else:
+                    usage()
+            else:
+                ProgramName=argv[i]
+            i+=1
+    except:
+        usage()
+
+passParams(sys.argv)
+
+if ProgramName=="":
+    usage()
+
+if During:
+    MaxMem=0
+    Start=time.time()
+    Started=False
+    try:
+        while True:
+            Mem=calcMem(ProgramName)
+            if Mem==0:
+                if Started:
+                    break
+                else:
+                    time.sleep(CheckInterval)
+                    continue
+            else:
+                Started=True
+            MaxMem=max(MaxMem,calcMem(ProgramName))
+            time.sleep(CheckInterval)
+    except KeyboardInterrupt:
+        pass
+    print("Run every %s in last %.3fs, max memory usage of %s is %skb."%(CheckInterval,time.time()-Start,ProgramName,MaxMem))
+else:
+    if (RunningTime==0):
+        print("Memory usage of %s is: %skb."%(ProgramName, calcMem(ProgramName)))
+    else:
+        MaxMem=0
+        Start=time.time()
+        try:
+            while time.time()<Start+RunningTime:
+                MaxMem=max(MaxMem,calcMem(ProgramName))
+                time.sleep(CheckInterval)
+        except KeyboardInterrupt:
+            pass
+        print("Run every %s in last %.3fs, max memory usage of %s is %skb."%(CheckInterval,time.time()-Start,ProgramName,MaxMem))
