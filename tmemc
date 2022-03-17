@@ -58,14 +58,12 @@ def calcMemTop(ProgramName):
 
 def calcMemSmem(ProgramName,Mode):
     Command=['smem -t -H -c %s -P "^%s$"'%(Mode,ProgramName)]
-    print(Command)
     run=subprocess.Popen(Command, bufsize=1, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, universal_newlines=True)
 
     Mem=0
 
     while True:
         line=run.stdout.readline()
-        print(line)
         if line=="":
             break
         try:
