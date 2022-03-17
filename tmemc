@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #Top Memory Calculator, by CRE, 20220316
-#Use top to get the maxmum memory usage of certain program name during a time interval.
+#Use top (or smem) to get the maxmum memory usage of certain program name during a time interval.
 import subprocess
 import sys
 import time
@@ -18,7 +18,13 @@ def interpretUnit(Size):
     return S
 
 HeaderItems=set(["PID", "USER", "PR", "NI", "VIRT", "RES", "SHR", "S", "%CPU", "%MEM", "TIME+", "COMMAND"])
-def calcMem(ProgramName):
+def calcMem(ProgramName,Mode='t'):
+    if Mode=="t":
+        return calcMemTop(ProgramName)
+    if Mode=="pss" or Mode=="uss":
+        return calcMemSmem(ProgramName,Mode)
+
+def calcMemTop(ProgramName):
     TopCommand=['top -bn1 -p `pgrep -d "," "^%s$"`'%(ProgramName)]
     run=subprocess.Popen(TopCommand, bufsize=1, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, universal_newlines=True)
 
@@ -50,26 +56,49 @@ def calcMem(ProgramName):
     run.terminate()
     return ResMem
 
+def calcMemSmem(ProgramName,Mode):
+    Command=['smem -t -H -c %s -P "^%s$"'%(Mode,ProgramName)]
+    print(Command)
+    run=subprocess.Popen(Command, bufsize=1, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, universal_newlines=True)
+
+    Mem=0
+
+    while True:
+        line=run.stdout.readline()
+        print(line)
+        if line=="":
+            break
+        try:
+            Mem=interpretUnit(line.strip())
+        except ValueError:
+            continue
+    run.wait()
+    run.terminate()
+    return Mem
+
 def usage(E=1):
     print(\
 """tmemc ProgramName [OPTIONS]
 Options:
     -t TIME(s)  Running time, if zero then run once.(default 0)
     -i TIME(s)  CheckInterval.(default 0.1)
-    -h --help   Show this help.
-    -d          During program running time. Would first wait ProgramName to run, then terminate after they are done.(default false, if given, will ignore -t)""",file=sys.stderr)
+    -p          Show PSS(need smem)
+    -d          During program running time. Would first wait ProgramName to run, then terminate after they are done.(default false, if given, will ignore -t) 
+    -h --help   Show this help.""",file=sys.stderr)
     exit(E)
 
 RunningTime=0
 CheckInterval=0.1
 ProgramName=""
 During=False
+Mode="t"
 
 def passParams(argv):
     global RunningTime
     global CheckInterval
     global ProgramName
     global During
+    global Mode
     try:
         i=1
         while i <len(argv):
@@ -82,6 +111,8 @@ def passParams(argv):
                     i+=1
                 elif argv[i]=="-d":
                     During=True
+                elif argv[i]=="-p":
+                    Mode="pss"
                 elif argv[i]=="--help" or argv[i]=="-h":
                     usage(0)
                 else:
@@ -103,7 +134,7 @@ if During:
     Started=False
     try:
         while True:
-            Mem=calcMem(ProgramName)
+            Mem=calcMem(ProgramName,Mode)
             if Mem==0:
                 if Started:
                     break
@@ -112,20 +143,20 @@ if During:
                     continue
             else:
                 Started=True
-            MaxMem=max(MaxMem,calcMem(ProgramName))
+            MaxMem=max(MaxMem,calcMem(ProgramName,Mode))
             time.sleep(CheckInterval)
     except KeyboardInterrupt:
         pass
     print("Run every %s in last %.3fs, max memory usage of %s is %skb."%(CheckInterval,time.time()-Start,ProgramName,MaxMem))
 else:
     if (RunningTime==0):
-        print("Memory usage of %s is: %skb."%(ProgramName, calcMem(ProgramName)))
+        print("Memory usage of %s is: %skb."%(ProgramName, calcMem(ProgramName,Mode)))
     else:
         MaxMem=0
         Start=time.time()
         try:
             while time.time()<Start+RunningTime:
-                MaxMem=max(MaxMem,calcMem(ProgramName))
+                MaxMem=max(MaxMem,calcMem(ProgramName,Mode))
                 time.sleep(CheckInterval)
         except KeyboardInterrupt:
             pass
