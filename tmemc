@@ -82,6 +82,7 @@ Options:
     -i TIME(s)  CheckInterval.(default 0.1)
     -p          Show PSS(need smem)
     -d          During program running time. Would first wait ProgramName to run, then terminate after they are done.(default false, if given, will ignore -t) 
+    -w          Time(s) to wait the program start when -d is given, will exit if program is not started during this time.(default 300)
     -h --help   Show this help.""",file=sys.stderr)
     exit(E)
 
@@ -90,6 +91,7 @@ CheckInterval=0.1
 ProgramName=""
 During=False
 Mode="t"
+TimeToWait=300
 
 def passParams(argv):
     global RunningTime
@@ -97,6 +99,7 @@ def passParams(argv):
     global ProgramName
     global During
     global Mode
+    global TimeToWait
     try:
         i=1
         while i <len(argv):
@@ -111,6 +114,9 @@ def passParams(argv):
                     During=True
                 elif argv[i]=="-p":
                     Mode="pss"
+                elif argv[i]=="-w":
+                    TimeToWait=int(argv[i+1])
+                    i+=1
                 elif argv[i]=="--help" or argv[i]=="-h":
                     usage(0)
                 else:
@@ -126,6 +132,7 @@ passParams(sys.argv)
 if ProgramName=="":
     usage()
 
+LaunchTime=time.time()
 if During:
     MaxMem=0
     Start=time.time()
@@ -142,6 +149,9 @@ if During:
             else:
                 Started=True
             MaxMem=max(MaxMem,calcMem(ProgramName,Mode))
+            if not Started and time.time()>LaunchTime+TimeToWait:
+                print("Waited %ss and no %s started. Exiting..."%(TimeToWait,ProgramName),file=sys.stderr)
+                exit(1)
             time.sleep(CheckInterval)
     except KeyboardInterrupt:
         pass
